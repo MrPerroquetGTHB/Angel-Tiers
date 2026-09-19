@@ -9,6 +9,7 @@ import math
 import os
 import re
 import time
+from urllib.parse import quote
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,7 @@ import matplotlib.pyplot as plt
 
 
 API_BASE = "https://subtiers.net/api/v2"
+PUBLIC_API_BASE = "https://subtiers.net/api"
 MINEATAR_HEAD = "https://api.mineatar.io/head/"
 EMBED_COLOUR = discord.Colour.from_rgb(135, 206, 250)  # light sky blue
 CACHE_SECONDS = 60 * 60
@@ -85,6 +87,12 @@ class SubtiersClient:
             await self.session.close()
 
     async def get(self, path: str) -> Any:
+        return await self.get_url(f"{API_BASE}/{path.lstrip('/')}")
+
+    async def get_public(self, path: str) -> Any:
+        return await self.get_url(f"{PUBLIC_API_BASE}/{path.lstrip('/')}")
+
+    async def get_url(self, url: str) -> Any:
         if not self.session:
             raise RuntimeError("HTTP session is not ready")
         try:
@@ -92,7 +100,7 @@ class SubtiersClient:
             # legitimately need more than that because its pagination is capped
             # at 50 players per tier, so honour its Retry-After response.
             for attempt in range(4):
-                async with self.session.get(f"{API_BASE}/{path.lstrip('/')}") as response:
+                async with self.session.get(url) as response:
                     if response.status == 404:
                         raise SubtiersAPIError("No linked SubTiers account was found.")
                     if response.status != 429:
@@ -153,6 +161,19 @@ class SubtiersClient:
             return list(MODE_LABELS)
         return list(payload)
 
+    async def active_leaderboard(self) -> list[dict[str, Any]]:
+        payload = await self.get_public("leaderboard/active")
+        players = payload.get("players") if isinstance(payload, dict) else None
+        if not isinstance(players, list):
+            raise SubtiersAPIError("SubTiers returned an unexpected active leaderboard.")
+        return [player for player in players if isinstance(player, dict)]
+
+    async def active_player(self, identifier: str) -> dict[str, Any]:
+        payload = await self.get_public(f"points/active/{quote(identifier.strip(), safe='')}")
+        if not isinstance(payload, dict) or "uuid" not in payload:
+            raise SubtiersAPIError("SubTiers returned unexpected active player data.")
+        return payload
+
 def display_tier(entry: dict[str, Any]) -> str:
     """Format a tier, following the API's instruction to show a retiree's peak."""
     retired = bool(entry.get("retired"))
@@ -184,27 +205,31 @@ def mode_field_name(mode: str) -> str:
     return f"{MODE_EMOJIS.get(mode, '🎯')} {label}"
 
 
-def profile_embed(profile: dict[str, Any]) -> discord.Embed:
+def profile_embed(
+    profile: dict[str, Any], *, active_only: bool = False, active_rank: int | None = None, active_points: int | None = None
+) -> discord.Embed:
     name = str(profile.get("name", "Unknown player"))
-    overall = profile.get("overall", profile.get("all_time_rank", "Unranked"))
-    points = profile.get("points", 0)
+    overall = active_rank if active_only else profile.get("overall", profile.get("all_time_rank", "Unranked"))
+    points = active_points if active_only else profile.get("points", 0)
     region = profile.get("region", "Unknown")
-    embed = discord.Embed(title=f"{name}'s tiers on SubTiers", colour=EMBED_COLOUR)
+    title = f"{name}'s active tiers on SubTiers" if active_only else f"{name}'s tiers on SubTiers"
+    embed = discord.Embed(title=title, colour=EMBED_COLOUR)
     embed.set_thumbnail(url=f"{MINEATAR_HEAD}{profile['uuid']}")
-    embed.add_field(name="Overall", value=f"**#{overall}**", inline=True)
-    embed.add_field(name="Points", value=str(points), inline=True)
+    overall_value = f"**#{overall}**" if overall else "Unranked"
+    embed.add_field(name="Active Spot" if active_only else "Overall", value=overall_value, inline=True)
+    embed.add_field(name="Active Points" if active_only else "Points", value=str(points), inline=True)
     embed.add_field(name="Region", value=str(region), inline=True)
     rankings = profile.get("rankings", {})
     discord_id = profile.get("discord_id")
     embed.add_field(name="Discord", value=f"<@{discord_id}>" if discord_id else "Not linked", inline=True)
     for mode in MODE_LABELS:
         tier = rankings.get(mode)
-        if tier:
+        if tier and (not active_only or not tier.get("retired")):
             embed.add_field(name=mode_field_name(mode), value=tier_value(tier), inline=True)
     for mode, tier in rankings.items():  # Do not silently drop future API modes.
-        if mode not in MODE_LABELS:
+        if mode not in MODE_LABELS and (not active_only or not tier.get("retired")):
             embed.add_field(name=mode_field_name(mode), value=tier_value(tier), inline=True)
-    embed.set_footer(text="subtiers.net")
+    embed.set_footer(text="Current tiers only — retired tiers are excluded" if active_only else "subtiers.net")
     return embed
 
 
@@ -323,11 +348,11 @@ async def tier(interaction: discord.Interaction, player: str) -> None:
 
 @bot.tree.command(name="pointvalue", description="Show the point value of every SubTiers tier.")
 async def point_value(interaction: discord.Interaction) -> None:
-    embed = discord.Embed(title="SubTiers Point Values", colour=EMBED_COLOUR)
+    embed = discord.Embed(title="Point Values", colour=EMBED_COLOUR)
     for tier in TIER_ORDER:
         emoji = f"{TIER_EMOJIS[tier]} " if tier in TIER_EMOJIS else ""
         embed.add_field(name=f"{emoji}{tier}", value=f"**{TIER_POINTS[tier]}** points", inline=True)
-    embed.set_footer(text="Higher tiers award more points")
+    embed.set_footer(text="subtiers.net")
     await interaction.response.send_message(embed=embed)
 
 
@@ -348,6 +373,66 @@ async def get_user(interaction: discord.Interaction, user: str) -> None:
     embed = profile_embed(profile)
     embed.description = f"Linked Discord account: <@{discord_id}>"
     await interaction.followup.send(embed=embed)
+
+
+class ActiveLeaderboardView(discord.ui.View):
+    """Buttons for opening the standard /tier-style card for active leaders."""
+
+    def __init__(self, players: list[dict[str, Any]]) -> None:
+        super().__init__(timeout=300)
+        for index, player in enumerate(players):
+            button = discord.ui.Button(
+                label=f"View {player['name']}"[:80],
+                style=discord.ButtonStyle.secondary,
+                row=index // 5,
+            )
+            button.callback = self.tier_callback(str(player["uuid"]))
+            self.add_item(button)
+
+    @staticmethod
+    def tier_callback(uuid: str):
+        async def callback(interaction: discord.Interaction) -> None:
+            await interaction.response.defer(ephemeral=True, thinking=True)
+            try:
+                profile = await bot.api.profile(uuid)
+            except SubtiersAPIError as error:
+                await interaction.followup.send(str(error), ephemeral=True)
+                return
+            await interaction.followup.send(embed=profile_embed(profile), ephemeral=True)
+
+        return callback
+
+
+@bot.tree.command(name="activelb", description="Show the active SubTiers leaderboard or a player's active tiers.")
+@app_commands.describe(username="Optional Minecraft username")
+async def active_lb(interaction: discord.Interaction, username: str | None = None) -> None:
+    await interaction.response.defer(thinking=True)
+    try:
+        if username:
+            active = await bot.api.active_player(username)
+            profile = await bot.api.profile(str(active["uuid"]))
+            await interaction.followup.send(
+                embed=profile_embed(
+                    profile,
+                    active_only=True,
+                    active_rank=active.get("rank"),
+                    active_points=active.get("points", 0),
+                )
+            )
+            return
+
+        players = (await bot.api.active_leaderboard())[:10]
+    except SubtiersAPIError as error:
+        await interaction.followup.send(str(error), ephemeral=True)
+        return
+
+    if not players:
+        await interaction.followup.send("There are no active players right now.", ephemeral=True)
+        return
+    rows = [f"**#{player.get('rank', '?')}** {player.get('name', 'Unknown')} - **{player.get('points', 0)}** active points" for player in players]
+    embed = discord.Embed(title="SubTiers Active Leaderboard", description="\n".join(rows), colour=EMBED_COLOUR)
+    embed.set_footer(text="Current tiers only - retired tiers and peaks are ignored")
+    await interaction.followup.send(embed=embed, view=ActiveLeaderboardView(players))
 
 
 @bot.tree.command(name="graph", description="Create or retrieve a tier-distribution graph for a SubTiers gamemode.")
