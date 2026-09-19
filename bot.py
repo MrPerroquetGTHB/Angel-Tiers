@@ -18,6 +18,7 @@ from discord import app_commands
 from dotenv import load_dotenv
 
 import matplotlib
+import numpy as np
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -28,7 +29,7 @@ MINEATAR_HEAD = "https://api.mineatar.io/head/"
 EMBED_COLOUR = discord.Colour.from_rgb(135, 206, 250)  # light sky blue
 CACHE_SECONDS = 60 * 60
 CACHE_DIR = Path("data/cache")
-GRAPH_STYLE_VERSION = "v2"
+GRAPH_STYLE_VERSION = "v3"
 UUID_PATTERN = re.compile(r"^[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}$")
 
 # This is also the ordering used by SubTiers' own UI.
@@ -226,26 +227,43 @@ def make_graph(mode: str, leaderboard: dict[str, Any]) -> tuple[Path, int]:
             counts[key] += 1
             total += 1
 
-    displayed_tiers = [tier for tier in TIER_ORDER if counts[tier] > 0]
+    displayed_tiers = list(TIER_ORDER)
     values = [counts[tier] for tier in displayed_tiers]
-    # A blue gradient makes the chart distinct while keeping tier labels readable.
-    colours = ["#93c5fd", "#7dd3fc", "#67e8f9", "#5eead4", "#38bdf8", "#60a5fa", "#3b82f6", "#6366f1", "#818cf8", "#a78bfa"]
+    tier_colours = {
+        "HT1": "#5d8cf2", "LT1": "#6d9aec", "HT2": "#739ff2", "LT2": "#81b3ed",
+        "HT3": "#b4e1f1", "LT3": "#56c994", "HT4": "#57cc91", "LT4": "#ffbd47",
+        "HT5": "#ffa940", "LT5": "#ed536c",
+    }
+    colours = [tier_colours[tier] for tier in displayed_tiers]
     fig, axis = plt.subplots(figsize=(10, 8), dpi=160)
-    fig.patch.set_facecolor("#07111f")
-    axis.set_facecolor("#0b1b30")
-    bars = axis.bar(displayed_tiers, values, color=colours[:len(values)], width=0.72, edgecolor="#dbeafe", linewidth=0.45)
-    fig.suptitle(f"SubTiers - {MODE_LABELS.get(mode, mode.title())}", color="white", y=0.96, fontsize=16, weight="bold")
-    axis.set_title(f"Region: OVERALL  •  Total Users: {total}", color="#bfdbfe", pad=20, fontsize=12)
-    axis.set_ylabel("Players", color="#cbd5e1")
-    axis.tick_params(colors="#cbd5e1")
-    for spine in axis.spines.values():
-        spine.set_color("#334e6d")
-    axis.grid(axis="y", color="#26415e", linewidth=0.8, alpha=0.7)
+    fig.patch.set_facecolor("#090f1a")
+    axis.set_facecolor("#0c1422")
+    maximum = max(values, default=0)
+    y_limit = max(10, int(np.ceil(maximum * 1.12 / 500)) * 500)
+    # Soft radial backdrop, similar to the reference without needing an image asset.
+    x, y = np.meshgrid(np.linspace(-1, 1, 700), np.linspace(-0.7, 1, 500))
+    glow = np.clip(1 - np.sqrt((x + 0.1) ** 2 + (y - 0.25) ** 2), 0, 1)[..., None]
+    dark = np.array([9, 15, 26], dtype=float) / 255
+    blue = np.array([19, 32, 52], dtype=float) / 255
+    backdrop = dark + (blue - dark) * glow * 0.65
+    axis.imshow(backdrop, extent=(-0.65, len(displayed_tiers) - 0.35, 0, y_limit), aspect="auto", zorder=0)
+    bars = axis.bar(displayed_tiers, values, color=colours, width=0.76, edgecolor="#d9e4f7", linewidth=0.35, zorder=3)
+    fig.suptitle(f"SubTiers - {MODE_LABELS.get(mode, mode.title())}", color="#f8fafc", y=0.96, fontsize=18, weight="bold")
+    axis.set_title(f"Region: OVERALL  |  Total Users: {total}", color="#acb9d0", pad=22, fontsize=13)
+    axis.set_ylabel("Players", color="#aebbd0", labelpad=12)
+    axis.tick_params(colors="#aebbd0", labelsize=11, length=5)
+    axis.spines["top"].set_visible(False)
+    axis.spines["right"].set_visible(False)
+    axis.spines["left"].set_color("#adb9cb")
+    axis.spines["bottom"].set_color("#adb9cb")
+    axis.set_ylim(0, y_limit)
+    axis.grid(False)
     axis.set_axisbelow(True)
     for bar, value in zip(bars, values):
         percentage = (value / total * 100) if total else 0
-        axis.text(bar.get_x() + bar.get_width() / 2, value, f"{value}\n{percentage:.1f}%", ha="center", va="bottom", color="white", fontsize=9)
-    axis.text(0.018, 0.972, "angel tiers", transform=axis.transAxes, ha="left", va="top", color="#93c5fd", fontsize=13, alpha=0.75, weight="bold")
+        label_y = value + y_limit * 0.045
+        axis.text(bar.get_x() + bar.get_width() / 2, label_y, str(value), ha="center", va="bottom", color="#f8fafc", fontsize=11)
+        axis.text(bar.get_x() + bar.get_width() / 2, label_y - y_limit * 0.028, f"{percentage:.1f}%", ha="center", va="bottom", color="#aebbd0", fontsize=10)
     fig.tight_layout()
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     image_path, metadata_path = cache_paths(mode)
