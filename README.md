@@ -16,6 +16,10 @@ A small Discord bot that looks up public [SubTiers](https://subtiers.net) profil
 3. In the Discord Developer Portal, invite the bot with the `bot` and `applications.commands` scopes.
 4. Run `python bot.py`.
 
+## DMs
+
+All slash commands are registered for servers, DMs, and group DMs. In the Discord Developer Portal under **Installation**, enable **User Install** and add the `applications.commands` scope. Users can then install the app to their account and use its slash commands in a DM with the bot.
+
 Set `DEV_GUILD_ID` in `.env` while developing to make command changes available immediately in one server. Without it, global command changes can take a little while to appear.
 
 The bot uses the public SubTiers v2 API and Mineatar's player-head endpoint. Cached graph images are written to `data/cache/` and are intentionally ignored by Git.

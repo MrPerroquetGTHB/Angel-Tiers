@@ -337,7 +337,13 @@ def make_graph(mode: str, leaderboard: dict[str, Any]) -> tuple[Path, int]:
 class AngelTiers(discord.Client):
     def __init__(self) -> None:
         super().__init__(intents=discord.Intents.none())
-        self.tree = app_commands.CommandTree(self)
+        # Register global slash commands for servers, direct messages, and
+        # group DMs. User installs make the app available outside a server.
+        self.tree = app_commands.CommandTree(
+            self,
+            allowed_contexts=app_commands.AppCommandContext(guild=True, dm_channel=True, private_channel=True),
+            allowed_installs=app_commands.AppInstallationType(guild=True, user=True),
+        )
         self.api = SubtiersClient()
 
     async def setup_hook(self) -> None:
