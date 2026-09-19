@@ -185,7 +185,11 @@ def tier_value(entry: dict[str, Any]) -> str:
     base_tier = tier.removeprefix("R")
     # The supplied tier emojis intentionally stop at LT3 / HT3.
     tier_emoji = f"{TIER_EMOJIS[base_tier]} " if base_tier in TIER_EMOJIS else ""
-    return f"{crown}{tier_emoji}**{tier}**{since}"
+    peak = ""
+    if not entry.get("retired") and entry.get("peak_tier") is not None and entry.get("peak_pos") is not None:
+        peak_tier = f"{'HT' if entry['peak_pos'] == 0 else 'LT'}{entry['peak_tier']}"
+        peak = f" ({peak_tier})"
+    return f"{crown}{tier_emoji}**{tier}**{peak}{since}"
 
 
 def mode_field_name(mode: str) -> str:
