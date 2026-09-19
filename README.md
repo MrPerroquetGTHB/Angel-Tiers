@@ -5,6 +5,7 @@ A small Discord bot that looks up public [SubTiers](https://subtiers.net) profil
 ## Commands
 
 - `/tier <Minecraft IGN or UUID>` — player profile, overall position, points, region, Minecraft head, and tiers.
+- `/pointvalue` — point values for every SubTiers tier.
 - `/get-user <Discord user>` — the Minecraft account connected to that Discord account, if one exists.
 - `/graph <gamemode> [update]` — counts every ranked player by HT/LT tier in a gamemode. Graphs are cached for one hour; set `update: True` to refresh now.
 

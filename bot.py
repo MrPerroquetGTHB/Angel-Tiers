@@ -321,6 +321,16 @@ async def tier(interaction: discord.Interaction, player: str) -> None:
     await interaction.followup.send(embed=profile_embed(profile))
 
 
+@bot.tree.command(name="pointvalue", description="Show the point value of every SubTiers tier.")
+async def point_value(interaction: discord.Interaction) -> None:
+    embed = discord.Embed(title="SubTiers Point Values", colour=EMBED_COLOUR)
+    for tier in TIER_ORDER:
+        emoji = f"{TIER_EMOJIS[tier]} " if tier in TIER_EMOJIS else ""
+        embed.add_field(name=f"{emoji}{tier}", value=f"**{TIER_POINTS[tier]}** points", inline=True)
+    embed.set_footer(text="Higher tiers award more points")
+    await interaction.response.send_message(embed=embed)
+
+
 @bot.tree.command(name="get-user", description="Find the Minecraft account linked to a Discord user.")
 @app_commands.describe(user="A Discord ID or @mention")
 async def get_user(interaction: discord.Interaction, user: str) -> None:
