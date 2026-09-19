@@ -263,16 +263,21 @@ async def tier(interaction: discord.Interaction, player: str) -> None:
 
 
 @bot.tree.command(name="get-user", description="Find the Minecraft account linked to a Discord user.")
-@app_commands.describe(user="Mention or select the Discord user")
-async def get_user(interaction: discord.Interaction, user: discord.User) -> None:
+@app_commands.describe(user="A Discord ID or @mention")
+async def get_user(interaction: discord.Interaction, user: str) -> None:
+    match = re.fullmatch(r"<@!?(\d{17,20})>|(\d{17,20})", user.strip())
+    if not match:
+        await interaction.response.send_message("Enter a Discord ID or a user mention.", ephemeral=True)
+        return
+    discord_id = int(match.group(1) or match.group(2))
     await interaction.response.defer(thinking=True)
     try:
-        profile = await bot.api.profile_by_discord(user.id)
+        profile = await bot.api.profile_by_discord(discord_id)
     except SubtiersAPIError as error:
-        await interaction.followup.send(f"{user.mention}: {error}", ephemeral=True)
+        await interaction.followup.send(f"<@{discord_id}>: {error}", ephemeral=True)
         return
     embed = profile_embed(profile)
-    embed.description = f"Linked Discord account: {user.mention}"
+    embed.description = f"Linked Discord account: <@{discord_id}>"
     await interaction.followup.send(embed=embed)
 
 
