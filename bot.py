@@ -188,7 +188,8 @@ def tier_value(entry: dict[str, Any]) -> str:
     peak = ""
     if not entry.get("retired") and entry.get("peak_tier") is not None and entry.get("peak_pos") is not None:
         peak_tier = f"{'HT' if entry['peak_pos'] == 0 else 'LT'}{entry['peak_tier']}"
-        peak = f" ({peak_tier})"
+        if TIER_POINTS.get(peak_tier, 0) > TIER_POINTS.get(base_tier, 0):
+            peak = f" (p{peak_tier})"
     return f"{crown}{tier_emoji}**{tier}**{peak}{since}"
 
 
