@@ -38,6 +38,29 @@ MODE_LABELS = {
     "og_vanilla": "OG Vanilla", "debuff": "DeBuff", "elytra": "Elytra",
     "manhunt": "Manhunt", "trident": "Trident",
 }
+# Custom emojis supplied for the Angel Tiers Discord server.
+MODE_EMOJIS = {
+    "creeper": "<:creeper:1550997830804447322>",
+    "speed": "<:speed:1550997829609332736>",
+    "og_vanilla": "<:ogv:1550997828296245400>",
+    "elytra": "<:elytra:1550997826895618099>",
+    "manhunt": "<:manhunt:1550997823623794799>",
+    "debuff": "<:debuff:1550997822063648768>",
+    "trident": "<:trident:1550997821023461426>",
+    "bed": "<:bed:1550997819760975973>",
+    "dia_smp": "<:d_smp:1550997818578051142>",
+    "minecart": "<:cart:1550997817030611055>",
+    "dia_crystal": "<:d_crystal:1550997816195940514>",
+    "bow": "<:bow:1550997814757040259>",
+}
+TIER_EMOJIS = {
+    "LT1": "<:lt1:1550998547120394351>",
+    "LT2": "<:lt2:1550998540690653274>",
+    "LT3": "<:lt3:1550998545908244500>",
+    "HT1": "<:ht1:1550998541994950706>",
+    "HT2": "<:ht2:1550998543471476876>",
+    "HT3": "<:ht3:155099854238772316>",
+}
 TIER_ORDER = ("HT1", "LT1", "HT2", "LT2", "HT3", "LT3", "HT4", "LT4", "HT5", "LT5")
 
 
@@ -134,13 +157,20 @@ def display_tier(entry: dict[str, Any]) -> str:
     retired = bool(entry.get("retired"))
     tier = entry.get("peak_tier") if retired else entry.get("tier")
     pos = entry.get("peak_pos") if retired else entry.get("pos")
-    return f"{'R' if retired else ''}{'HT' if pos == 0 else 'LT'}{tier if tier is not None else '?'}"
+    return f"{'HT' if pos == 0 else 'LT'}{tier if tier is not None else '?'}"
 
 
 def tier_value(entry: dict[str, Any]) -> str:
+    tier = display_tier(entry)
     attained = entry.get("attained")
     since = f" since <t:{int(attained)}:D>" if isinstance(attained, (int, float)) else ""
-    return f"**{display_tier(entry)}**{since}"
+    crown = "👑 " if entry.get("retired") else ""
+    return f"{crown}{TIER_EMOJIS.get(tier, '🏆')} **{tier}**{since}"
+
+
+def mode_field_name(mode: str) -> str:
+    label = MODE_LABELS.get(mode, mode.replace("_", " ").title())
+    return f"{MODE_EMOJIS.get(mode, '🎯')} {label}"
 
 
 def profile_embed(profile: dict[str, Any]) -> discord.Embed:
@@ -159,10 +189,10 @@ def profile_embed(profile: dict[str, Any]) -> discord.Embed:
     for mode in MODE_LABELS:
         tier = rankings.get(mode)
         if tier:
-            embed.add_field(name=MODE_LABELS[mode], value=tier_value(tier), inline=True)
+            embed.add_field(name=mode_field_name(mode), value=tier_value(tier), inline=True)
     for mode, tier in rankings.items():  # Do not silently drop future API modes.
         if mode not in MODE_LABELS:
-            embed.add_field(name=mode.replace("_", " ").title(), value=tier_value(tier), inline=True)
+            embed.add_field(name=mode_field_name(mode), value=tier_value(tier), inline=True)
     embed.set_footer(text="Data provided by subtiers.net")
     return embed
 
