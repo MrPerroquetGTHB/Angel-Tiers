@@ -158,7 +158,8 @@ def display_tier(entry: dict[str, Any]) -> str:
     retired = bool(entry.get("retired"))
     tier = entry.get("peak_tier") if retired else entry.get("tier")
     pos = entry.get("peak_pos") if retired else entry.get("pos")
-    return f"{'HT' if pos == 0 else 'LT'}{tier if tier is not None else '?'}"
+    prefix = "R" if retired else ""
+    return f"{prefix}{'HT' if pos == 0 else 'LT'}{tier if tier is not None else '?'}"
 
 
 def tier_value(entry: dict[str, Any]) -> str:
@@ -166,7 +167,10 @@ def tier_value(entry: dict[str, Any]) -> str:
     attained = entry.get("attained")
     since = f" since <t:{int(attained)}:D>" if isinstance(attained, (int, float)) else ""
     crown = "👑 " if entry.get("retired") else ""
-    return f"{crown}{TIER_EMOJIS.get(tier, '🏆')} **{tier}**{since}"
+    base_tier = tier.removeprefix("R")
+    # The supplied tier emojis intentionally stop at LT3 / HT3.
+    tier_emoji = f"{TIER_EMOJIS[base_tier]} " if base_tier in TIER_EMOJIS else ""
+    return f"{crown}{tier_emoji}**{tier}**{since}"
 
 
 def mode_field_name(mode: str) -> str:
