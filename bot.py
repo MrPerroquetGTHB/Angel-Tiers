@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import os
 import re
 import time
@@ -18,7 +19,6 @@ from discord import app_commands
 from dotenv import load_dotenv
 
 import matplotlib
-import numpy as np
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -29,7 +29,7 @@ MINEATAR_HEAD = "https://api.mineatar.io/head/"
 EMBED_COLOUR = discord.Colour.from_rgb(135, 206, 250)  # light sky blue
 CACHE_SECONDS = 60 * 60
 CACHE_DIR = Path("data/cache")
-GRAPH_STYLE_VERSION = "v3"
+GRAPH_STYLE_VERSION = "v4"
 UUID_PATTERN = re.compile(r"^[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}$")
 
 # This is also the ordering used by SubTiers' own UI.
@@ -240,17 +240,11 @@ def make_graph(mode: str, leaderboard: dict[str, Any]) -> tuple[Path, int]:
     }
     colours = [tier_colours[tier] for tier in displayed_tiers]
     fig, axis = plt.subplots(figsize=(10, 8), dpi=160)
-    fig.patch.set_facecolor("#090f1a")
-    axis.set_facecolor("#0c1422")
+    background = "#0c1422"
+    fig.patch.set_facecolor(background)
+    axis.set_facecolor(background)
     maximum = max(values, default=0)
-    y_limit = max(10, int(np.ceil(maximum * 1.12 / 500)) * 500)
-    # Soft radial backdrop, similar to the reference without needing an image asset.
-    x, y = np.meshgrid(np.linspace(-1, 1, 700), np.linspace(-0.7, 1, 500))
-    glow = np.clip(1 - np.sqrt((x + 0.1) ** 2 + (y - 0.25) ** 2), 0, 1)[..., None]
-    dark = np.array([9, 15, 26], dtype=float) / 255
-    blue = np.array([19, 32, 52], dtype=float) / 255
-    backdrop = dark + (blue - dark) * glow * 0.65
-    axis.imshow(backdrop, extent=(-0.65, len(displayed_tiers) - 0.35, 0, y_limit), aspect="auto", zorder=0)
+    y_limit = max(10, math.ceil(maximum * 1.12 / 500) * 500)
     bars = axis.bar(displayed_tiers, values, color=colours, width=0.76, edgecolor="#d9e4f7", linewidth=0.35, zorder=3)
     fig.suptitle(f"SubTiers - {MODE_LABELS.get(mode, mode.title())}", color="#f8fafc", y=0.96, fontsize=18, weight="bold")
     axis.set_title(f"Region: OVERALL  |  Total Users: {total}", color="#acb9d0", pad=22, fontsize=13)
