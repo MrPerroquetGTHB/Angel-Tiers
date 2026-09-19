@@ -28,6 +28,7 @@ MINEATAR_HEAD = "https://api.mineatar.io/head/"
 EMBED_COLOUR = discord.Colour.from_rgb(135, 206, 250)  # light sky blue
 CACHE_SECONDS = 60 * 60
 CACHE_DIR = Path("data/cache")
+GRAPH_STYLE_VERSION = "v2"
 UUID_PATTERN = re.compile(r"^[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}$")
 
 # This is also the ordering used by SubTiers' own UI.
@@ -168,7 +169,7 @@ def profile_embed(profile: dict[str, Any]) -> discord.Embed:
 
 def cache_paths(mode: str) -> tuple[Path, Path]:
     safe_mode = re.sub(r"[^a-z0-9_-]", "_", mode.lower())
-    return CACHE_DIR / f"{safe_mode}.png", CACHE_DIR / f"{safe_mode}.json"
+    return CACHE_DIR / f"{safe_mode}-{GRAPH_STYLE_VERSION}.png", CACHE_DIR / f"{safe_mode}-{GRAPH_STYLE_VERSION}.json"
 
 
 def cache_is_fresh(path: Path) -> bool:
@@ -197,24 +198,24 @@ def make_graph(mode: str, leaderboard: dict[str, Any]) -> tuple[Path, int]:
 
     displayed_tiers = [tier for tier in TIER_ORDER if counts[tier] > 0]
     values = [counts[tier] for tier in displayed_tiers]
-    # Match the colourful ascending distribution style in the supplied mockup.
-    colours = ["#5ecdf0", "#8764e8", "#3a84e8", "#49bbea", "#63dfe7", "#3dce9a", "#40ca8d", "#ffc329", "#ff933d", "#e85d77"]
+    # A blue gradient makes the chart distinct while keeping tier labels readable.
+    colours = ["#93c5fd", "#7dd3fc", "#67e8f9", "#5eead4", "#38bdf8", "#60a5fa", "#3b82f6", "#6366f1", "#818cf8", "#a78bfa"]
     fig, axis = plt.subplots(figsize=(10, 8), dpi=160)
-    fig.patch.set_facecolor("#111827")
-    axis.set_facecolor("#111827")
-    bars = axis.bar(displayed_tiers, values, color=colours[:len(values)], width=0.8)
-    fig.suptitle(f"SubTiers - {MODE_LABELS.get(mode, mode.title())}", color="white", y=0.96, fontsize=16)
-    axis.set_title(f"Region: OVERALL | Total Users: {total}", color="#f3f4f6", pad=20, fontsize=13)
-    axis.set_ylabel("Players", color="#d6e6f5")
-    axis.tick_params(colors="#d6e6f5")
+    fig.patch.set_facecolor("#07111f")
+    axis.set_facecolor("#0b1b30")
+    bars = axis.bar(displayed_tiers, values, color=colours[:len(values)], width=0.72, edgecolor="#dbeafe", linewidth=0.45)
+    fig.suptitle(f"SubTiers - {MODE_LABELS.get(mode, mode.title())}", color="white", y=0.96, fontsize=16, weight="bold")
+    axis.set_title(f"Region: OVERALL  •  Total Users: {total}", color="#bfdbfe", pad=20, fontsize=12)
+    axis.set_ylabel("Players", color="#cbd5e1")
+    axis.tick_params(colors="#cbd5e1")
     for spine in axis.spines.values():
-        spine.set_color("#e5e7eb")
-    axis.grid(False)
+        spine.set_color("#334e6d")
+    axis.grid(axis="y", color="#26415e", linewidth=0.8, alpha=0.7)
     axis.set_axisbelow(True)
     for bar, value in zip(bars, values):
         percentage = (value / total * 100) if total else 0
         axis.text(bar.get_x() + bar.get_width() / 2, value, f"{value}\n{percentage:.1f}%", ha="center", va="bottom", color="white", fontsize=9)
-    axis.text(0.99, 0.012, "Made by Angel Tiers", transform=axis.transAxes, ha="right", va="bottom", color="#ffae2b", fontsize=10)
+    axis.text(0.018, 0.972, "angel tiers", transform=axis.transAxes, ha="left", va="top", color="#93c5fd", fontsize=13, alpha=0.75, weight="bold")
     fig.tight_layout()
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     image_path, metadata_path = cache_paths(mode)
