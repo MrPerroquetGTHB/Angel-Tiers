@@ -123,6 +123,7 @@ class SubtiersClient:
             raise RuntimeError("HTTP session is not ready")
         try:
             for attempt in range(4):
+                logging.info("Pulling SubTiers API: %s (attempt %s)", url, attempt + 1)
                 async with self.session.get(url) as response:
                     if response.status == 404:
                         raise SubtiersAPIError("No linked SubTiers account was found.")
@@ -421,6 +422,13 @@ def make_graph(mode: str, leaderboard: dict[str, list[dict[str, Any]]]) -> tuple
     return image_path, total
 
 
+def interaction_log_context(interaction: discord.Interaction) -> str:
+    guild_id = interaction.guild_id or "DM"
+    channel_id = interaction.channel_id or "unknown"
+    user = interaction.user
+    return f"server={guild_id} channel={channel_id} user={user} user_id={user.id}"
+
+
 class AngelTiers(discord.Client):
     def __init__(self) -> None:
         super().__init__(intents=discord.Intents.none())
@@ -461,6 +469,7 @@ bot = AngelTiers()
 @bot.tree.command(name="tier", description="Show a Minecraft player's SubTiers profile.")
 @app_commands.describe(player="Minecraft IGN or UUID")
 async def tier(interaction: discord.Interaction, player: str) -> None:
+    logging.info("/tier requested for player=%s | %s", player, interaction_log_context(interaction))
     await interaction.response.defer(thinking=True)
     try:
         profile = await bot.api.profile(player)
@@ -473,6 +482,12 @@ async def tier(interaction: discord.Interaction, player: str) -> None:
 @bot.tree.command(name="compare", description="Compare two Minecraft players' SubTiers profiles.")
 @app_commands.describe(player1="First Minecraft IGN or UUID", player2="Second Minecraft IGN or UUID")
 async def compare(interaction: discord.Interaction, player1: str, player2: str) -> None:
+    logging.info(
+        "/compare requested for player1=%s player2=%s | %s",
+        player1,
+        player2,
+        interaction_log_context(interaction),
+    )
     await interaction.response.defer(thinking=True)
     try:
         first, second = await asyncio.gather(bot.api.profile(player1), bot.api.profile(player2))
@@ -484,6 +499,7 @@ async def compare(interaction: discord.Interaction, player1: str, player2: str) 
 
 @bot.tree.command(name="random", description="Show a random player from the top 100 overall.")
 async def random_player(interaction: discord.Interaction) -> None:
+    logging.info("/random requested, pulling top 100 overall | %s", interaction_log_context(interaction))
     await interaction.response.defer(thinking=True)
     try:
         players = await bot.api.top_players()
@@ -507,6 +523,7 @@ async def random_player(interaction: discord.Interaction) -> None:
 
 @bot.tree.command(name="pointvalue", description="Show the point value of every SubTiers tier.")
 async def point_value(interaction: discord.Interaction) -> None:
+    logging.info("/pointvalue requested | %s", interaction_log_context(interaction))
     embed = discord.Embed(title="Point Values", colour=EMBED_COLOUR)
     for tier in TIER_ORDER:
         emoji = f"{TIER_EMOJIS[tier]} " if tier in TIER_EMOJIS else ""
@@ -518,6 +535,7 @@ async def point_value(interaction: discord.Interaction) -> None:
 @bot.tree.command(name="get-user", description="Find the Minecraft account linked to a Discord user.")
 @app_commands.describe(user="A Discord ID or @mention")
 async def get_user(interaction: discord.Interaction, user: str) -> None:
+    logging.info("/get-user requested for discord_user=%s | %s", user, interaction_log_context(interaction))
     match = re.fullmatch(r"<@!?(\d{17,20})>|(\d{17,20})", user.strip())
     if not match:
         await interaction.response.send_message("Enter a Discord ID or a user mention.", ephemeral=True)
@@ -600,11 +618,13 @@ class ActiveLeaderboardView(discord.ui.View):
         self.add_item(next_page)
 
     async def go_to_previous_page(self, interaction: discord.Interaction) -> None:
+        logging.info("Active leaderboard previous page | %s", interaction_log_context(interaction))
         self.page -= 1
         self.update_buttons()
         await interaction.response.edit_message(embed=self.build_embed(), view=self)
 
     async def go_to_next_page(self, interaction: discord.Interaction) -> None:
+        logging.info("Active leaderboard next page | %s", interaction_log_context(interaction))
         self.page += 1
         self.update_buttons()
         await interaction.response.edit_message(embed=self.build_embed(), view=self)
@@ -612,6 +632,11 @@ class ActiveLeaderboardView(discord.ui.View):
     @staticmethod
     def tier_callback(uuid: str):
         async def callback(interaction: discord.Interaction) -> None:
+            logging.info(
+                "Active leaderboard player button, pulling uuid=%s | %s",
+                uuid,
+                interaction_log_context(interaction),
+            )
             await interaction.response.defer(ephemeral=True, thinking=True)
             try:
                 profile = await bot.api.profile(uuid)
@@ -626,6 +651,10 @@ class ActiveLeaderboardView(discord.ui.View):
 @bot.tree.command(name="activelb", description="Show the active SubTiers leaderboard or a player's active tiers.")
 @app_commands.describe(username="Optional Minecraft username")
 async def active_lb(interaction: discord.Interaction, username: str | None = None) -> None:
+    if username:
+        logging.info("/activelb requested for username=%s | %s", username, interaction_log_context(interaction))
+    else:
+        logging.info("/activelb requested, pulling active leaderboard | %s", interaction_log_context(interaction))
     await interaction.response.defer(thinking=True)
     try:
         if username:
@@ -657,6 +686,13 @@ async def active_lb(interaction: discord.Interaction, username: str | None = Non
 @app_commands.describe(gamemode="A SubTiers gamemode", update="Fetch a new graph instead of using the one-hour cache")
 async def graph(interaction: discord.Interaction, gamemode: str, update: bool = False) -> None:
     mode = gamemode.strip().lower().replace(" ", "_")
+    logging.info(
+        "/graph requested for gamemode=%s normalized_mode=%s update=%s | %s",
+        gamemode,
+        mode,
+        update,
+        interaction_log_context(interaction),
+    )
     await interaction.response.defer(thinking=True)
     try:
         modes = await bot.api.modes()
@@ -667,8 +703,10 @@ async def graph(interaction: discord.Interaction, gamemode: str, update: bool = 
         image_path, metadata_path = cache_paths(mode)
         cached = not update and cache_is_fresh(image_path)
         if cached:
+            logging.info("Using cached graph for mode=%s from %s", mode, image_path)
             player_total = cached_player_total(metadata_path)
         else:
+            logging.info("Pulling leaderboard and making graph for mode=%s", mode)
             leaderboard = await bot.api.leaderboard(mode)
             image_path, player_total = await asyncio.to_thread(make_graph, mode, leaderboard)
     except (SubtiersAPIError, OSError, ValueError, json.JSONDecodeError) as error:
