@@ -30,6 +30,7 @@ PUBLIC_API_BASE = "https://subtiers.net/api"
 MINEATAR_HEAD = "https://api.mineatar.io/head/"
 EMBED_COLOUR = discord.Colour.from_rgb(135, 206, 250)
 CACHE_SECONDS = 60 * 60
+GRAPH_UPDATE_COOLDOWN_SECONDS = 30 * 60
 CACHE_DIR = Path("data/cache")
 GRAPH_STYLE_VERSION = "v4"
 UUID_PATTERN = re.compile(
@@ -418,7 +419,10 @@ def make_graph(mode: str, leaderboard: dict[str, list[dict[str, Any]]]) -> tuple
     image_path, metadata_path = cache_paths(mode)
     fig.savefig(image_path, facecolor=fig.get_facecolor(), bbox_inches="tight")
     plt.close(fig)
-    metadata_path.write_text(json.dumps({"mode": mode, "players": total}), encoding="utf-8")
+    metadata_path.write_text(
+        json.dumps({"mode": mode, "players": total, "updated_at": time.time()}),
+        encoding="utf-8",
+    )
     return image_path, total
 
 
@@ -427,6 +431,14 @@ def interaction_log_context(interaction: discord.Interaction) -> str:
     channel_id = interaction.channel_id or "unknown"
     user = interaction.user
     return f"server={guild_id} channel={channel_id} user={user} user_id={user.id}"
+
+
+def graph_update_is_on_cooldown(metadata_path: Path) -> bool:
+    if not metadata_path.exists():
+        return False
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    updated_at = metadata.get("updated_at")
+    return isinstance(updated_at, (int, float)) and updated_at + GRAPH_UPDATE_COOLDOWN_SECONDS > time.time()
 
 
 class AngelTiers(discord.Client):
@@ -701,9 +713,13 @@ async def graph(interaction: discord.Interaction, gamemode: str, update: bool = 
             await interaction.followup.send(f"Unknown gamemode. Available modes: {choices}", ephemeral=True)
             return
         image_path, metadata_path = cache_paths(mode)
-        cached = not update and cache_is_fresh(image_path)
+        cooldown_cached = update and image_path.exists() and graph_update_is_on_cooldown(metadata_path)
+        cached = image_path.exists() and (cooldown_cached or (not update and cache_is_fresh(image_path)))
         if cached:
-            logging.info("Using cached graph for mode=%s from %s", mode, image_path)
+            if cooldown_cached:
+                logging.info("Update cooldown active for mode=%s; using cached graph from %s", mode, image_path)
+            else:
+                logging.info("Using cached graph for mode=%s from %s", mode, image_path)
             player_total = cached_player_total(metadata_path)
         else:
             logging.info("Pulling leaderboard and making graph for mode=%s", mode)
