@@ -27,7 +27,7 @@ import matplotlib.pyplot as plt
 API_BASE = "https://subtiers.net/api/v2"
 V1_API_BASE = "https://subtiers.net/api/v1"
 PUBLIC_API_BASE = "https://subtiers.net/api"
-MINEATAR_HEAD = "https://api.mineatar.io/head/"
+CRAFTY_HEAD = "https://render.crafty.gg/3d/head/"
 EMBED_COLOUR = discord.Colour.from_rgb(135, 206, 250)
 CACHE_SECONDS = 60 * 60
 GRAPH_UPDATE_COOLDOWN_SECONDS = 30 * 60
@@ -233,21 +233,25 @@ def tier_value(entry: dict[str, Any]) -> str:
     crown = "👑 " if entry.get("retired") else ""
     current_tier = tier.removeprefix("R")
     emoji = f"{TIER_EMOJIS.get(current_tier, '')} " if current_tier in TIER_EMOJIS else ""
-    points = TIER_POINTS.get(current_tier, 0)
+    peak_tier = None
+    if entry.get("peak_tier") is not None and entry.get("peak_pos") is not None:
+        peak_tier = f"{'HT' if entry['peak_pos'] == 0 else 'LT'}{entry['peak_tier']}"
+    points = TIER_POINTS.get(peak_tier or current_tier, 0)
     attained = entry.get("attained")
     since = f" since <t:{int(attained)}:D>" if isinstance(attained, (int, float)) else ""
     peak = ""
-    if not entry.get("retired") and entry.get("peak_tier") is not None and entry.get("peak_pos") is not None:
-        peak_tier = f"{'HT' if entry['peak_pos'] == 0 else 'LT'}{entry['peak_tier']}"
-        if TIER_POINTS.get(peak_tier, 0) > points:
-            peak = f" (p{peak_tier})"
+    if not entry.get("retired") and peak_tier and peak_tier != current_tier:
+        peak = f" (p{peak_tier})"
     return f"{crown}{emoji}**{tier}** · **{points} pts**{peak}{since}"
 
 
 def tier_score(entry: dict[str, Any] | None) -> int:
     if not entry:
         return 0
-    return TIER_POINTS.get(display_tier(entry).removeprefix("R"), 0)
+    current_tier = display_tier(entry).removeprefix("R")
+    if entry.get("peak_tier") is not None and entry.get("peak_pos") is not None:
+        current_tier = f"{'HT' if entry['peak_pos'] == 0 else 'LT'}{entry['peak_tier']}"
+    return TIER_POINTS.get(current_tier, 0)
 
 
 def mode_field_name(mode: str) -> str:
@@ -286,7 +290,7 @@ def profile_embed(
     points = active_points if active_only else profile.get("points", 0)
     title = f"{name}'s active tiers on SubTiers" if active_only else f"{name}'s tiers on SubTiers"
     embed = discord.Embed(title=title, colour=EMBED_COLOUR)
-    embed.set_thumbnail(url=f"{MINEATAR_HEAD}{profile['uuid']}")
+    embed.set_thumbnail(url=f"{CRAFTY_HEAD}{profile['uuid']}")
     embed.add_field(name="Active Spot" if active_only else "Overall", value=format_rank(rank), inline=True)
     embed.add_field(name="Active Points" if active_only else "Points", value=str(points), inline=True)
     embed.add_field(name="Region", value=str(profile.get("region", "Unknown")), inline=True)
