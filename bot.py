@@ -25,6 +25,7 @@ import matplotlib.pyplot as plt
 
 
 API_BASE = "https://subtiers.net/api/v2"
+V1_API_BASE = "https://subtiers.net/api/v1"
 PUBLIC_API_BASE = "https://subtiers.net/api"
 MINEATAR_HEAD = "https://api.mineatar.io/head/"
 EMBED_COLOUR = discord.Colour.from_rgb(135, 206, 250)
@@ -114,6 +115,9 @@ class SubtiersClient:
     async def get_public(self, path: str) -> Any:
         return await self.get_url(f"{PUBLIC_API_BASE}/{path.lstrip('/')}")
 
+    async def get_v1(self, path: str) -> Any:
+        return await self.get_url(f"{V1_API_BASE}/{path.lstrip('/')}")
+
     async def get_url(self, url: str) -> Any:
         if self.session is None:
             raise RuntimeError("HTTP session is not ready")
@@ -198,6 +202,14 @@ class SubtiersClient:
                 break
             offset += 50
         return list(players.values())
+
+    async def tested_player_count(self) -> int:
+        payload = await self.get_v1("rankings/overall?page=1&pageSize=1")
+        pagination = payload.get("pagination") if isinstance(payload, dict) else None
+        total = pagination.get("total") if isinstance(pagination, dict) else None
+        if not isinstance(total, int):
+            raise SubtiersAPIError("SubTiers returned an unexpected player count.")
+        return total
 
     async def active_player(self, identifier: str) -> dict[str, Any]:
         payload = await self.get_public(f"points/active/{quote(identifier.strip(), safe='')}")
@@ -430,6 +442,13 @@ class AngelTiers(discord.Client):
         else:
             await self.tree.sync()
             logging.info("Global commands synced")
+
+    async def on_ready(self) -> None:
+        try:
+            tested_players = await self.api.tested_player_count()
+            await self.change_presence(activity=discord.Game(name=f"Counting {tested_players:,} tiers"))
+        except SubtiersAPIError:
+            logging.warning("Could not load the tested-player count for the bot status")
 
     async def close(self) -> None:
         await self.api.close()
