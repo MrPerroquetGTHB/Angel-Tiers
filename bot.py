@@ -5,6 +5,7 @@ import json
 import logging
 import math
 import os
+import random
 import re
 import time
 from collections import Counter
@@ -178,6 +179,25 @@ class SubtiersClient:
         if not isinstance(players, list):
             raise SubtiersAPIError("SubTiers returned an unexpected active leaderboard.")
         return [player for player in players if isinstance(player, dict)]
+
+    async def top_players(self) -> list[dict[str, Any]]:
+        players: dict[str, dict[str, Any]] = {}
+        offset = 0
+        while offset < 100:
+            payload = await self.get_public(f"leaderboard?mode=overall&offset={offset}&count=50")
+            page = payload.get("players") if isinstance(payload, dict) else None
+            if not isinstance(page, list) or not page:
+                break
+            for player in page:
+                if not isinstance(player, dict) or not player.get("uuid"):
+                    continue
+                rank = player.get("rank")
+                if isinstance(rank, int) and 1 <= rank <= 100:
+                    players[str(player["uuid"])] = player
+            if not payload.get("hasMore"):
+                break
+            offset += 50
+        return list(players.values())
 
     async def active_player(self, identifier: str) -> dict[str, Any]:
         payload = await self.get_public(f"points/active/{quote(identifier.strip(), safe='')}")
@@ -441,6 +461,29 @@ async def compare(interaction: discord.Interaction, player1: str, player2: str) 
         await interaction.followup.send(str(error), ephemeral=True)
         return
     await interaction.followup.send(embed=comparison_embed(first, second))
+
+
+@bot.tree.command(name="random", description="Show a random player from the top 100 overall.")
+async def random_player(interaction: discord.Interaction) -> None:
+    await interaction.response.defer(thinking=True)
+    try:
+        players = await bot.api.top_players()
+        if not players:
+            await interaction.followup.send(
+                "No ranked players were found in the top 100.",
+                ephemeral=True,
+            )
+            return
+        selected = random.choice(players)
+        profile = await bot.api.profile(str(selected["uuid"]))
+    except SubtiersAPIError as error:
+        await interaction.followup.send(str(error), ephemeral=True)
+        return
+
+    embed = profile_embed(profile)
+    embed.title = "Random player from the top 100"
+    embed.description = f"Selected: **{profile.get('name', selected.get('name', 'Unknown player'))}**"
+    await interaction.followup.send(embed=embed)
 
 
 @bot.tree.command(name="pointvalue", description="Show the point value of every SubTiers tier.")
