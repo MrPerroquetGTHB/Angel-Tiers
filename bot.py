@@ -264,7 +264,10 @@ def ordered_modes(*rankings: dict[str, dict[str, Any]]) -> list[str]:
     modes = list(MODE_LABELS)
     for ranking in rankings:
         modes.extend(mode for mode in ranking if mode not in modes)
-    return modes
+    return sorted(
+        modes,
+        key=lambda mode: -max((tier_score(ranking.get(mode)) for ranking in rankings), default=0),
+    )
 
 
 def overall_rank(profile: dict[str, Any]) -> Any:
