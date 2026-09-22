@@ -31,6 +31,8 @@ CRAFTY_HEAD = "https://render.crafty.gg/3d/head/"
 EMBED_COLOUR = discord.Colour.from_rgb(135, 206, 250)
 CACHE_SECONDS = 60 * 60
 GRAPH_UPDATE_COOLDOWN_SECONDS = 30 * 60
+STATUS_SWITCH_SECONDS = 15
+STARTING_COMMAND_COUNT = 211
 CACHE_DIR = Path("data/cache")
 GRAPH_STYLE_VERSION = "v4"
 UUID_PATTERN = re.compile(
@@ -457,6 +459,9 @@ class AngelTiers(discord.Client):
             allowed_installs=app_commands.AppInstallationType(guild=True, user=True),
         )
         self.api = SubtiersClient()
+        self.command_count = STARTING_COMMAND_COUNT
+        self.tested_player_count: int | None = None
+        self.status_task: asyncio.Task[None] | None = None
 
     async def setup_hook(self) -> None:
         await self.api.start()
@@ -472,12 +477,37 @@ class AngelTiers(discord.Client):
 
     async def on_ready(self) -> None:
         try:
-            tested_players = await self.api.tested_player_count()
-            await self.change_presence(activity=discord.Game(name=f"Counting {tested_players:,} tiers"))
+            self.tested_player_count = await self.api.tested_player_count()
         except SubtiersAPIError:
             logging.warning("Could not load the tested-player count for the bot status")
 
+        if self.status_task is None or self.status_task.done():
+            self.status_task = asyncio.create_task(self._status_loop())
+
+    async def on_interaction(self, interaction: discord.Interaction) -> None:
+        if interaction.type is discord.InteractionType.application_command:
+            self.command_count += 1
+
+    async def _status_loop(self) -> None:
+        while not self.is_closed():
+            await self.change_presence(activity=discord.Game(name=f"{self.command_count:,} commands asked"))
+            await asyncio.sleep(STATUS_SWITCH_SECONDS)
+
+            if self.tested_player_count is None:
+                try:
+                    self.tested_player_count = await self.api.tested_player_count()
+                except SubtiersAPIError:
+                    logging.warning("Could not refresh the people count for the bot status")
+
+            if self.tested_player_count is not None:
+                await self.change_presence(
+                    activity=discord.Game(name=f"Counting {self.tested_player_count:,} people")
+                )
+            await asyncio.sleep(STATUS_SWITCH_SECONDS)
+
     async def close(self) -> None:
+        if self.status_task is not None:
+            self.status_task.cancel()
         await self.api.close()
         await super().close()
 
